@@ -326,6 +326,9 @@ func (m Model) updateSync(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	switch key {
 	case "q", "ctrl+c":
+		if m.dirty {
+			m = m.save() // never drop unsaved changes on the way out
+		}
 		return m, tea.Quit
 	case "f":
 		m.force = !m.force
@@ -462,6 +465,9 @@ func (m Model) startSync(key string) (tea.Model, tea.Cmd) {
 func (m Model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	if key == "q" || key == "ctrl+c" {
+		if m.dirty {
+			m = m.save() // never drop unsaved changes on the way out
+		}
 		return m, tea.Quit
 	}
 	if mm, cmd, handled := m.tabKeys(key); handled {
@@ -601,9 +607,17 @@ func (m Model) savePair() (tea.Model, tea.Cmd) {
 	}
 	m.cfg.UpsertPair(p)
 	delete(m.states, p.Name) // force a fresh scan
-	m.dirty = true
 	m.overlay = ovNone
-	m.status, m.stErr = "pair "+p.Name+" set (w to save, r to scan)", false
+	// Persist straight away — a confirmed pair edit is a deliberate action, and
+	// leaving it only in memory (silently dropped on quit) is the last thing the
+	// user expects after changing, say, the local path.
+	if err := config.Save(m.cfg); err != nil {
+		m.dirty = true
+		m.status, m.stErr = "pair set but save failed: "+err.Error(), true
+		return m, nil
+	}
+	m.dirty = false
+	m.status, m.stErr = "pair "+p.Name+" saved (r to scan)", false
 	return m, nil
 }
 
@@ -624,9 +638,14 @@ func (m Model) updateProvider(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter", "ctrl+s":
 		m.cfg.SetProviderSetting(m.provName, "app_key", strings.TrimSpace(m.appKey.Value()))
-		m.dirty = true
 		m.overlay = ovNone
-		m.status, m.stErr = m.provName+" app_key set (w to save)", false
+		if err := config.Save(m.cfg); err != nil {
+			m.dirty = true
+			m.status, m.stErr = "app_key set but save failed: "+err.Error(), true
+			return m, nil
+		}
+		m.dirty = false
+		m.status, m.stErr = m.provName+" app_key saved", false
 		return m, nil
 	}
 	var cmd tea.Cmd

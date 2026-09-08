@@ -58,6 +58,9 @@ func TestProviderAndAccountViews(t *testing.T) {
 }
 
 func TestSavePair(t *testing.T) {
+	// savePair now persists immediately, so point config.Path() at a throwaway
+	// dir — a unit test must never touch the real ~/.config/clouder/config.toml.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	m := newModel().openPair("")
 	m.fields[fName].SetValue("photos")
 	m.fields[fLocal].SetValue("~/Pictures")
@@ -67,12 +70,21 @@ func TestSavePair(t *testing.T) {
 	if _, ok := m2.cfg.Find("photos"); !ok {
 		t.Fatalf("pair not added")
 	}
-	if !m2.dirty {
-		t.Fatalf("dirty flag not set")
+	if m2.dirty {
+		t.Fatalf("dirty should be cleared once the pair is written to disk")
+	}
+	// and it must actually be on disk, not just in memory
+	got, err := config.Load()
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if _, ok := got.Find("photos"); !ok {
+		t.Fatalf("pair not persisted to disk")
 	}
 }
 
 func TestSavePairRequiresFields(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	m := newModel().openPair("")
 	m.fields[fName].SetValue("") // missing name
 	m.fields[fLocal].SetValue("~/x")
