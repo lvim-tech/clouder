@@ -189,7 +189,7 @@ func (m Model) viewSync() string {
 	b.WriteString("\n")
 	b.WriteString(m.hintGroup("Files  ", m.st.OK,
 		[2]string{"↑↓", "move"}, [2]string{"space", "select"}, [2]string{"v", "all"},
-		[2]string{"s", "sync"}, [2]string{"u/d", "up/down"}, [2]string{"n", "dry-run"}, [2]string{"f", "force"}, [2]string{"t", "seconds"},
+		[2]string{"s", "sync sel"}, [2]string{"u/d", "up/down sel"}, [2]string{"n", "dry-run"}, [2]string{"f", "force"}, [2]string{"t", "seconds"},
 	) + "\n")
 	b.WriteString(m.hintGroup("Project", m.st.AccentAlt,
 		[2]string{"←→", "switch"}, [2]string{"r", "rescan"}, [2]string{"a", "add"}, [2]string{"e", "edit"}, [2]string{"x", "delete"}, [2]string{"w", "save"}, [2]string{"q", "quit"},
@@ -307,9 +307,14 @@ func (m Model) renderDiff(ps *pairState) []string {
 		if filesFocused && i == ps.cur {
 			cursor = m.st.Cursor.Render("▌ ")
 		}
-		selGlyph := m.st.Muted.Render("·")
-		if ps.sel[r.Path] {
-			selGlyph = m.st.Accent.Render("◉")
+		// Only changed rows are selectable; an in-sync row shows no marker
+		// (it is there for information, not for syncing).
+		selGlyph := " "
+		if r.Kind != sync.InSync {
+			selGlyph = m.st.Muted.Render("·")
+			if ps.sel[r.Path] {
+				selGlyph = m.st.Accent.Render("◉")
+			}
 		}
 		mk := m.st.markStyle(r.Kind).Render(padCells(diff.Mark(r.Kind), 2))
 		lt, rt := timeOf(r.Local), timeOf(r.Remote)

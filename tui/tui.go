@@ -383,25 +383,31 @@ func (m Model) updateSync(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		ps.cur = maxInt(0, len(ps.rows)-1)
 	case " ":
 		if len(ps.rows) > 0 {
-			path := ps.rows[ps.cur].Path
-			if ps.sel == nil {
-				ps.sel = map[string]bool{}
+			r := ps.rows[ps.cur]
+			if r.Kind == sync.InSync {
+				m.status, m.stErr = "in-sync file — for info only, not selectable", true
+			} else {
+				if ps.sel == nil {
+					ps.sel = map[string]bool{}
+				}
+				ps.sel[r.Path] = !ps.sel[r.Path]
 			}
-			ps.sel[path] = !ps.sel[path]
 		}
-	case "v":
+	case "v": // select/deselect all CHANGED rows (in-sync ones stay untouched)
 		if ps.sel == nil {
 			ps.sel = map[string]bool{}
 		}
-		allOn := len(ps.rows) > 0
+		allOn := true
 		for _, r := range ps.rows {
-			if !ps.sel[r.Path] {
+			if r.Kind != sync.InSync && !ps.sel[r.Path] {
 				allOn = false
 				break
 			}
 		}
 		for _, r := range ps.rows {
-			ps.sel[r.Path] = !allOn
+			if r.Kind != sync.InSync {
+				ps.sel[r.Path] = !allOn
+			}
 		}
 	}
 	return m, nil
@@ -442,9 +448,13 @@ func (m Model) startSync(key string) (tea.Model, tea.Cmd) {
 	}
 	ps := m.state(p.Name)
 	only := selectedPaths(ps)
-	if len(only) > 0 {
-		what += fmt.Sprintf(" %d selected", len(only))
+	// Nothing syncs unless something is chosen — a deliberate guard so a
+	// stray keypress can't move the whole tree.
+	if len(only) == 0 {
+		m.status, m.stErr = "nothing selected — mark files with space (or v for all), then sync", true
+		return m, nil
 	}
+	what += fmt.Sprintf(" %d selected", len(only))
 	ps.busy, ps.busyWhat = true, what
 	return m, m.syncCmd(p.Name, opts, only)
 }
